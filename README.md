@@ -19,6 +19,7 @@ SimpleQueue is a HTTP PUT/GET Queue Manager in Java. Project is Open source (Apa
   - Queue names are limited to safe URL caracters: `A-Za-z0-9._-`
   - Queues are stored in a single directory, in some filesystems, like FAT32 are limited to 65k files.
   - If you use a case-insensitive filesystem (like FAT32) Queue names can collide.
+  - Queue depth are limited to less than 2^31-1
   - Elements of queue are limited to 65500 bytes
 
 ### Configuration
