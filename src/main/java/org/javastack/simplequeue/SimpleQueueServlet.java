@@ -41,12 +41,18 @@ import org.apache.log4j.Logger;
 public class SimpleQueueServlet extends HttpServlet {
 	private static final String CONF_FILE = "/simplequeue.properties";
 	private static final String STORAGE_PARAM = "org.javastack.simplequeue.directory";
+	private static final String CONCURRENT_QUEUES_PARAM = "org.javastack.simplequeue.concurrent.queues";
+	private static final String DEFAULT_TIMEOUT_PARAM = "org.javastack.simplequeue.default.timeout";
+	
 	private static final long serialVersionUID = 42L;
 	private static final Logger log = Logger.getLogger(SimpleQueueServlet.class);
 	private static final Charset DEFAULT_URL_ENCODING = Charset.forName("UTF-8");
-	private static final int DEFAULT_TIMEOUT = 1000;
 	private static final int MAX_LENGTH = 65500;
+
 	private File storeDir = null;
+	private int maxConcurrentOpenedQueues;
+	private int defaultTimeout;
+
 	private QueueManager<byte[]> qmgr = null;
 
 	public SimpleQueueServlet() {
@@ -54,64 +60,78 @@ public class SimpleQueueServlet extends HttpServlet {
 
 	@Override
 	public void init() throws ServletException {
-		String cfgDir = null;
-		// Try Context Property
-		if (cfgDir == null) {
-			try {
-				cfgDir = getServletContext().getInitParameter(STORAGE_PARAM);
-			} catch (Exception e) {
-			}
-		}
-		// Try System Property
-		if (cfgDir == null) {
-			try {
-				cfgDir = System.getProperty(STORAGE_PARAM);
-			} catch (Exception e) {
-			}
-		}
-		// Try System Environment
-		if (cfgDir == null) {
-			try {
-				cfgDir = System.getenv(STORAGE_PARAM);
-			} catch (Exception e) {
-			}
-		}
-		// Try Config file
-		if (cfgDir == null) {
-			final Properties p = new Properties();
-			try {
-				log.info("Searching " + CONF_FILE.substring(1) + " in classpath");
-				final InputStream is = this.getClass().getResourceAsStream(CONF_FILE);
-				if (is != null) {
-					p.load(is);
-					is.close();
-				}
-			} catch (IOException e) {
-				throw new ServletException(e);
-			}
-			log.info("Searching " + STORAGE_PARAM + " in config file");
-			cfgDir = p.getProperty(STORAGE_PARAM);
-		}
-		// Throw Error
-		if (cfgDir == null) {
-			throw new ServletException("Invalid param for: " + STORAGE_PARAM);
-		}
+		// Get Config param
 		try {
-			this.storeDir = new File(cfgDir).getCanonicalFile();
-		} catch (IOException e) {
+			storeDir = new File(getConfig(STORAGE_PARAM, null)).getCanonicalFile();
+			log.info("Storage Path: " + storeDir);
+			storeDir.mkdirs();
+			maxConcurrentOpenedQueues = Integer.valueOf(getConfig(CONCURRENT_QUEUES_PARAM, "128"));
+			log.info("Max Concurrent Opened Queues: " + maxConcurrentOpenedQueues);
+			defaultTimeout = Integer.valueOf(getConfig(DEFAULT_TIMEOUT_PARAM, "1000"));
+			log.info("Default Timeout: " + defaultTimeout);
+		} catch (Exception e) {
 			throw new ServletException(e);
 		}
-		log.info("Storage Path: " + storeDir);
-		storeDir.mkdirs();
-
+		// Init QueueManager
 		try {
 			final File dir = getContextStoreDir(storeDir);
 			qmgr = new QueueManagerPersisted<byte[]>(dir,
-					QueueManagerPersisted.QueueSerializer.BYTEARRAY_SERIALIZER, 128);
+					QueueManagerPersisted.QueueSerializer.BYTEARRAY_SERIALIZER, maxConcurrentOpenedQueues);
 			qmgr.init();
 		} catch (Exception e) {
 			throw new ServletException(e);
 		}
+	}
+
+	private final String getConfig(final String paramName, final String defValue) throws ServletException {
+		String value = null;
+		// Try Context Property
+		if (value == null) {
+			try {
+				value = getServletContext().getInitParameter(paramName);
+			} catch (Exception e) {
+			}
+		}
+		// Try System Property
+		if (value == null) {
+			try {
+				value = System.getProperty(paramName);
+			} catch (Exception e) {
+			}
+		}
+		// Try System Environment
+		if (value == null) {
+			try {
+				value = System.getenv(paramName);
+			} catch (Exception e) {
+			}
+		}
+		// Try Config file
+		if (value == null) {
+			final Properties p = new Properties();
+			InputStream is = null;
+			try {
+				log.info("Searching " + CONF_FILE.substring(1) + " in classpath");
+				is = this.getClass().getResourceAsStream(CONF_FILE);
+				if (is != null) {
+					p.load(is);
+					is.close();
+				}
+			} catch (Exception e) {
+				throw new ServletException(e);
+			}
+			log.info("Searching " + paramName + " in config file");
+			value = p.getProperty(paramName);
+		}
+		// Default value
+		if (value == null) {
+			value = defValue;
+		}
+		// Throw Error
+		if (value == null) {
+			throw new ServletException("Invalid param for: " + paramName);
+		}
+		return value;
 	}
 
 	private final File getContextStoreDir(final File dir) throws IOException {
@@ -143,7 +163,7 @@ public class SimpleQueueServlet extends HttpServlet {
 			throws ServletException, IOException {
 		final int bodySize = request.getContentLength();
 		final String qname = getPathInfoKey(request.getPathInfo());
-		final int timeout = Math.max(getParameter(request, "timeout", DEFAULT_TIMEOUT), 1);
+		final int timeout = Math.max(getParameter(request, "timeout", defaultTimeout), 1);
 		if (qname == null) {
 			sendResponse(response, HttpServletResponse.SC_BAD_REQUEST, "NO_QUEUE");
 			return;
@@ -228,7 +248,7 @@ public class SimpleQueueServlet extends HttpServlet {
 	protected void doGet(final HttpServletRequest request, final HttpServletResponse response)
 			throws ServletException, IOException {
 		final String qname = getPathInfoKey(request.getPathInfo());
-		final int timeout = Math.max(getParameter(request, "timeout", DEFAULT_TIMEOUT), 1);
+		final int timeout = Math.max(getParameter(request, "timeout", defaultTimeout), 1);
 		final boolean reqSize = (request.getParameter("size") != null);
 		final String forceMime = mapNull(request.getParameter("forceMime"), "");
 		if (qname == null) {

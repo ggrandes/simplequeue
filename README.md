@@ -24,7 +24,11 @@ SimpleQueue is a HTTP PUT/GET Queue Manager in Java. Project is Open source (Apa
 
 ### Configuration
 
-SimpleQueue only need directory path to store data, this is configured with property name `org.javastack.simplequeue.directory`, that can be configured in a Context Param, System Property, System Environment, or file named `simplequeue.properties` (located in classpath) 
+SimpleQueue can be configured using a Context Param, System Property, System Environment, or file named `simplequeue.properties` (located in classpath). Valid parameters are:
+
+  - `org.javastack.simplequeue.directory` (mandatory): directory path to store data.
+  - `org.javastack.simplequeue.concurrent.queues` (optional): limits the cache of concurrent queues (default value: 128 queues).
+  - `org.javastack.simplequeue.default.timeout` (optional): default blocking timeout (default value: 1000 ms).
 
 ### Sample cURL usage
 
