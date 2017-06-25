@@ -4,7 +4,7 @@
 
 	<groupId>org.javastack</groupId>
 	<artifactId>simplequeue</artifactId>
-	<version>1.0.0</version>
+	<version>1.0.1</version>
 	<packaging>war</packaging>
 	<description>SimpleQueue is a HTTP PUT/GET Queue Manager</description>
 
@@ -161,7 +161,7 @@
 			<extension>
 				<groupId>org.springframework.build</groupId>
 				<artifactId>aws-maven</artifactId>
-				<version>4.4.0.RELEASE</version>
+				<version>5.0.0.RELEASE</version>
 			</extension>
 		</extensions>
 	</build>

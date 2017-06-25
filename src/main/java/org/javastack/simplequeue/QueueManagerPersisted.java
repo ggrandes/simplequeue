@@ -91,10 +91,10 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 	}
 
 	@Override
-	public T get(final String qname, final long timeout, final TimeUnit unit) throws InterruptedException,
-			TimeoutException {
+	public T get(final String qname, final long timeout, final TimeUnit unit, final TransactionAdapter<T> ta)
+			throws InterruptedException, TimeoutException {
 		final DiskQueue<T> queue = getQueue(qname);
-		final T e = queue.poll(timeout, unit);
+		final T e = queue.poll(timeout, unit, ta);
 		if (e == null)
 			throw new TimeoutException();
 		return e;
@@ -165,6 +165,7 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 		private final FileStreamStore stream;
 		private final ByteBuffer wbuf, rbuf;
 		private final QueueSerializer<T> serializer;
+		private final String qname;
 		private IntHolder maxKey = null;
 		private boolean isDirty = false;
 
@@ -177,14 +178,15 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 			final File storeStream = new File(storeDir, qname + ".stream");
 			wbuf = ByteBuffer.allocate(BUF_LEN);
 			rbuf = ByteBuffer.allocate(BUF_LEN);
-			map = fac.createTreeFile(fac.createTreeOptionsDefault()
-					.set(KVStoreFactory.FILENAME, storeTree.getCanonicalPath())
-					.set(KVStoreFactory.DISABLE_POPULATE_CACHE, true));
+			map = fac.createTreeFile(
+					fac.createTreeOptionsDefault().set(KVStoreFactory.FILENAME, storeTree.getCanonicalPath())
+							.set(KVStoreFactory.DISABLE_POPULATE_CACHE, true));
 			stream = new FileStreamStore(storeStream, BUF_LEN);
 			stream.setAlignBlocks(true);
 			stream.setFlushOnWrite(true);
 			stream.setSyncOnFlush(false);
 			this.serializer = serializer;
+			this.qname = qname;
 		}
 
 		public synchronized void open() throws InvalidDataException {
@@ -248,7 +250,7 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 			return ret;
 		}
 
-		public synchronized T poll(final long timeout, final TimeUnit unit) {
+		public synchronized T poll(final long timeout, final TimeUnit unit, final TransactionAdapter<T> ta) {
 			try {
 				final long begin = System.currentTimeMillis();
 				final long howWait = unit.toMillis(timeout);
@@ -262,7 +264,15 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 					final TreeEntry<IntHolder, LongHolder> entry = map.firstEntry();
 					final LongHolder offset = entry.getValue();
 					final T value = get(offset);
-					remove(entry.getKey());
+					final boolean canCommit;
+					if (ta != null) {
+						canCommit = ta.canCommit(qname, value);
+					} else {
+						canCommit = true;
+					}
+					if (canCommit) {
+						remove(entry.getKey());
+					}
 					isDirty = true;
 					if ((size == 1) && (maxKey.intValue() > CLEAR_ELEMENTS)) {
 						maxKey = nextKey(RESET_KEY);
@@ -369,7 +379,7 @@ public class QueueManagerPersisted<T> implements QueueManager<T>, Runnable {
 				qmgr.put("test", ("ola k ase" + i).getBytes(), 5000, TimeUnit.MILLISECONDS);
 			System.out.println(qmgr.size("test"));
 			byte[] v = null;
-			while ((v = qmgr.get("test", 5000, TimeUnit.MILLISECONDS)) != null)
+			while ((v = qmgr.get("test", 5000, TimeUnit.MILLISECONDS, null)) != null)
 				System.out.println(new String(v));
 		} catch (TimeoutException e) {
 		} finally {

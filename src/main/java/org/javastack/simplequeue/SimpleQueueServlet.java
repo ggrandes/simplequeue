@@ -32,6 +32,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.log4j.Logger;
+import org.javastack.simplequeue.QueueManager.TransactionAdapter;
 
 /**
  * Simple Queue in HTTP
@@ -43,7 +44,7 @@ public class SimpleQueueServlet extends HttpServlet {
 	private static final String STORAGE_PARAM = "org.javastack.simplequeue.directory";
 	private static final String CONCURRENT_QUEUES_PARAM = "org.javastack.simplequeue.concurrent.queues";
 	private static final String DEFAULT_TIMEOUT_PARAM = "org.javastack.simplequeue.default.timeout";
-	
+
 	private static final long serialVersionUID = 42L;
 	private static final Logger log = Logger.getLogger(SimpleQueueServlet.class);
 	private static final Charset DEFAULT_URL_ENCODING = Charset.forName("UTF-8");
@@ -218,8 +219,8 @@ public class SimpleQueueServlet extends HttpServlet {
 						offset += len;
 					}
 					if (offset != bodySize) {
-						sendResponse(response, HttpServletResponse.SC_BAD_REQUEST, "CONTENT_LENGTH_MISMATCH:"
-								+ bodySize + ":" + offset);
+						sendResponse(response, HttpServletResponse.SC_BAD_REQUEST,
+								"CONTENT_LENGTH_MISMATCH:" + bodySize + ":" + offset);
 						return;
 					}
 					data = bbuf;
@@ -240,6 +241,7 @@ public class SimpleQueueServlet extends HttpServlet {
 		} catch (InterruptedException e) {
 			sendResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "INTERRUPTED");
 		} catch (Exception e) {
+			log.error("Exception: " + e, e);
 			sendResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "ERROR");
 		}
 	}
@@ -259,14 +261,28 @@ public class SimpleQueueServlet extends HttpServlet {
 			if (reqSize) {
 				sendResponse(response, HttpServletResponse.SC_OK, Integer.toString(qmgr.size(qname)));
 			} else {
-				final byte[] data = qmgr.get(qname, timeout, TimeUnit.MILLISECONDS);
-				sendResponse(response, HttpServletResponse.SC_OK, data, forceMime);
+				final TransactionAdapter<byte[]> ta = new TransactionAdapter<byte[]>() {
+					@Override
+					public boolean canCommit(final String qname, final byte[] data) {
+						try {
+							sendResponse(response, HttpServletResponse.SC_OK, data, forceMime);
+							return true;
+						} catch (IOException e) {
+							log.error("IOException: " + e);
+						} catch (Exception e) {
+							log.error("Exception: " + e, e);
+						}
+						return false;
+					}
+				};
+				qmgr.get(qname, timeout, TimeUnit.MILLISECONDS, ta);
 			}
 		} catch (TimeoutException e) {
 			sendResponse(response, HttpServletResponse.SC_NO_CONTENT, "TIMEOUT");
 		} catch (InterruptedException e) {
 			sendResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "INTERRUPTED");
 		} catch (Exception e) {
+			log.error("Exception: " + e, e);
 			sendResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "ERROR");
 		}
 	}
@@ -290,12 +306,17 @@ public class SimpleQueueServlet extends HttpServlet {
 			}
 		}
 		response.setContentType(mime);
+		os.flush(); // Flush Headers
 		os.write(data);
-		os.flush();
+		os.flush(); // Flush Body (here throws exception if client is dead)
 	}
 
 	private final void sendResponse(final HttpServletResponse response, final int code, final String msg)
 			throws IOException {
+		if (response.isCommitted()) {
+			log.error("Unable to sendResponse error code=" + code + " msg=" + msg + " already commited");
+			return;
+		}
 		final PrintWriter out = response.getWriter();
 		response.setStatus(code);
 		setNoCache(response);

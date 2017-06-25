@@ -10,12 +10,13 @@ public interface QueueManager<T> {
 	 * @param qname
 	 * @param timeout
 	 * @param unit
+	 * @param ta
 	 * @return
 	 * @throws InterruptedException
 	 * @throws TimeoutException
 	 */
-	T get(final String qname, final long timeout, final TimeUnit unit) throws InterruptedException,
-			TimeoutException;
+	T get(final String qname, final long timeout, final TimeUnit unit, final TransactionAdapter<T> ta)
+			throws InterruptedException, TimeoutException;
 
 	/**
 	 * Check if qname is valid
@@ -59,4 +60,8 @@ public interface QueueManager<T> {
 	 * @throws InterruptedException
 	 */
 	void destroy() throws InterruptedException;
+
+	public interface TransactionAdapter<T> {
+		boolean canCommit(final String qname, final T data);
+	}
 }

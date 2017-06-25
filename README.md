@@ -2,7 +2,7 @@
 
 SimpleQueue is a HTTP PUT/GET Queue Manager in Java. Project is Open source (Apache License, Version 2.0).
 
-### Current Stable Version is [1.0.0](https://maven-release.s3.amazonaws.com/release/org/javastack/simplequeue/1.0.0/simplequeue-1.0.0.war)
+### Current Stable Version is [1.0.1](https://maven-release.s3.amazonaws.com/release/org/javastack/simplequeue/1.0.1/simplequeue-1.0.1.war)
 
 ---
 
